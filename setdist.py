@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 """
 Finding all examples in the Blust PPH reflex list which have:
 - A limited geographical distribution;
@@ -230,6 +230,15 @@ def find_suspicious_sets(glottocache, grouped):
 def has_languages(languages, rows):
     """Utility function to add a column for languages of interest e.g. linguas franca"""
     return bool(len([r for r in rows if r["GlottoCode"] in languages]))
+
+##
+## Clustering analysis: attempting to confirm Zorc's (2021) interaction axes by
+## applying a clustering algorithm to the ACD Philippines data. Try several different
+## algorithms from scikit-learn and see which gives the best results
+## September 2022
+##
+
+import sklearn.cluster as skcluster
 
 
 def main():
