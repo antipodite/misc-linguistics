@@ -190,20 +190,19 @@ def compute_distances(rows):
     return set(distances)
 
 
-def count_subgroups(glottocache, groups, rows, attr="glottocode"):
-    """Count how many of given subgroups cognate set represented by rows represented in.
-    """
-    count = 0        
+def get_unique_microgroups(glottocache, groups, rows, attr="glottocode"):
+    """Count unique subgroups for this cognate set"""
+    microgroups = []
     for row in rows:
         lg = glottocache.get(row["GlottoCode"])
         ancestors = [getattr(a, attr) for a in lg.ancestors]
         for group in groups:
             if group in ancestors:
-                count += 1
-    return count
+                microgroups.append(group)
+    return set(microgroups)
 
 
-def find_suspicious_sets(glottocache, grouped):
+def summarise_lexical_data(glottocache, grouped):
     """Search for subgroup or geographically limited cognate sets.
     Instead of using an arbitrary distance cutoff, calculate the maximum distance
     between reflexes within a set.
@@ -213,15 +212,17 @@ def find_suspicious_sets(glottocache, grouped):
         if len(rows) > 1:
             # Distances
             distances = compute_distances(rows)
+            unique_groups = get_unique_microgroups(glottocache, MICROGROUPS, rows, attr="name")
             set_row = {
-                "ProtoForm": protoform,
-                "Reflexes": len(rows),
-                "MaxDist": max(distances),
-                "MinDist": min(distances),
-                "MeanDist": sum(distances) / len(distances),
-                "Interpolated": True if any([row["InterpolatedDistance"] for row in rows]) else False,
-                "nMicrogroups": count_subgroups(glottocache, MICROGROUPS, rows, attr="name"),
-                "hasRegional": has_languages(REGIONALS, rows)
+                "protoform": protoform,
+                "reflexes": len(rows),
+                "maxdist": max(distances),
+                "mindist": min(distances),
+                "meandist": sum(distances) / len(distances),
+                "interpolated": True if any([row["InterpolatedDistance"] for row in rows]) else False,
+                "microgroups": unique_groups,
+                "nmicrogroups": len(unique_groups),
+                "hasregionallang": has_languages(REGIONALS, rows)
             }
             result.append(set_row)
     return result
@@ -239,20 +240,43 @@ def has_languages(languages, rows):
 ##
 
 import sklearn.cluster as skcluster
+import gower
+
+
+def build_microgroup_matrix(rows):
+    """Transform the result of find_suspicious_sets into a presence/absence
+    matrix with one column per microgroup
+    """
+    matrix = []
+    for row in rows:
+        matrix_row = {"protoform": row["protoform"], "meandist": row["meandist"]}
+        for mg in MICROGROUPS:
+            state = 1 if mg in row["microgroups"] else 0
+            matrix_row[mg] = state
+        matrix.append(matrix_row)
+    return matrix
 
 
 def main():
     gc = GlottoCache(".")
-    fname = sys.argv[1]
-    data = load_data(fname)
+    infile, summaryfile, matrixfile = sys.argv[1:]
+    data = load_data(infile)
     rows = attach_glottolog_data(gc, data)
     rows = interpolate_positions(gc, rows)
     grouped = groupby(rows, "Protoform")
+    summary = summarise_lexical_data(gc, grouped)
+    matrix = build_microgroup_matrix(summary)
 
-    suspicious = find_suspicious_sets(gc, grouped)
-    print(tabulate.tabulate(suspicious))
+    with open(summaryfile, "w") as f:
+        writer = csv.DictWriter(f, fieldnames=summary[0].keys(), delimiter="\t")
+        writer.writeheader()
+        writer.writerows(summary)
+    with open(matrixfile, "w") as f:
+        writer = csv.DictWriter(f, fieldnames=matrix[0].keys(), delimiter="\t")
+        writer.writeheader()
+        writer.writerows(matrix)
+    
 
-    gc.save()
 if __name__ == "__main__":
     main()
 
